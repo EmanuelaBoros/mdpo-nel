@@ -22,6 +22,7 @@ class WikidataClient:
         self.backoff = backoff
         self._cache: dict[tuple[str, str, int], list[str]] = {}
         self._info_cache: dict[tuple[str, str], list[str]] = {}
+        self._label_cache: dict[tuple[str, str], dict[str, str]] = {}
         self._lock = asyncio.Lock()
         self._sem = asyncio.Semaphore(max_concurrent)
 
@@ -104,3 +105,43 @@ class WikidataClient:
                 except (aiohttp.ClientError, asyncio.TimeoutError):
                     await asyncio.sleep(self.backoff * attempt)
         return []
+
+    async def get_label_description(self, session: aiohttp.ClientSession, qid: str, language: str) -> dict[str, str]:
+        """Return `{"label": ..., "desc": ...}` for a QID, falling back to English, or empty strings."""
+        key = (qid.strip(), language)
+        async with self._lock:
+            if key in self._label_cache:
+                return self._label_cache[key]
+
+        langs = list(dict.fromkeys([language, "en"]))
+        params = {
+            "action": "wbgetentities",
+            "ids": qid,
+            "languages": "|".join(langs),
+            "format": "json",
+            "props": "labels|descriptions",
+        }
+        async with self._sem:
+            for attempt in range(1, self.max_retries + 1):
+                try:
+                    async with session.get(WIKIDATA_API, params=params, headers=DEFAULT_HEADERS) as resp:
+                        if resp.status == 429:
+                            await asyncio.sleep(self.backoff * (2 ** (attempt - 1)))
+                            continue
+                        if resp.status != 200:
+                            return {"label": "", "desc": ""}
+                        data = await resp.json()
+                        item = data.get("entities", {}).get(qid, {})
+                        out = {"label": "", "desc": ""}
+                        for field, key_name in (("labels", "label"), ("descriptions", "desc")):
+                            for lang in langs:
+                                value = item.get(field, {}).get(lang, {}).get("value", "")
+                                if value:
+                                    out[key_name] = value
+                                    break
+                        async with self._lock:
+                            self._label_cache[key] = out
+                        return out
+                except (aiohttp.ClientError, asyncio.TimeoutError):
+                    await asyncio.sleep(self.backoff * attempt)
+        return {"label": "", "desc": ""}

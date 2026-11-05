@@ -104,31 +104,33 @@ async def run_selection(config: SelectionConfig) -> Path:
     token_preds = ["_"] * max_end
     token_golds = ["_"] * max_end
 
+    async def process(item: dict, session: aiohttp.ClientSession) -> dict:
+        pred = await select_entity(
+            agent,
+            wikidata,
+            session,
+            item["input_candidate"],
+            item["context"],
+            item.get("retrievals", []),
+            config.language,
+            semaphore,
+        )
+        return {
+            "entity": item["input_candidate"],
+            "token_start": item.get("abs_token_start"),
+            "token_end": item.get("abs_token_end"),
+            "prediction": pred,
+            "ground_truth": item.get("gold_qid"),
+            "candidates": item.get("retrievals", []),
+        }
+
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=20)) as session:
-        out_rows = []
-        for item in records:
-            pred = await select_entity(
-                agent,
-                wikidata,
-                session,
-                item["input_candidate"],
-                item["context"],
-                item.get("retrievals", []),
-                config.language,
-                semaphore,
-            )
-            row = {
-                "entity": item["input_candidate"],
-                "token_start": item.get("abs_token_start"),
-                "token_end": item.get("abs_token_end"),
-                "prediction": pred,
-                "ground_truth": item.get("gold_qid"),
-                "candidates": item.get("retrievals", []),
-            }
-            out_rows.append(row)
-            for i in range(row["token_start"], row["token_end"]):
-                token_preds[i] = pred
-                token_golds[i] = row["ground_truth"]
+        out_rows = await asyncio.gather(*(process(item, session) for item in records))
+
+    for row in out_rows:
+        for i in range(row["token_start"], row["token_end"]):
+            token_preds[i] = row["prediction"]
+            token_golds[i] = row["ground_truth"]
 
     with open(pred_path, "w", encoding="utf-8") as f:
         for row in out_rows:

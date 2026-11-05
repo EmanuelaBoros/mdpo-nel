@@ -25,7 +25,6 @@ class RetrievalConfig:
     language: str
     model: str
     base_url: str
-    split: str = "test"
     max_candidates: int = 8
     search_languages: str | None = None
     alias_dict: str | None = None

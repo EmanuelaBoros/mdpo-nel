@@ -67,13 +67,16 @@ openai 2.8.1
 Serve the released checkpoint-2000 model with:
 
 ```bash
-/Utilisateurs/tnguye28/.conda/envs/GPT-OSS/bin/python \
-  -m vllm.entrypoints.openai.api_server \
+python -m vllm.entrypoints.openai.api_server \
   --model Nampfiev1995/GPT-OSS-20B-MDPO-NEL-3003-1600-mxfp4 \
   --served-model-name GPT-OSS-20B-MDPO-NEL-3003-2000-mxfp4 \
   --host 0.0.0.0 \
   --port 8007
 ```
+
+Run this in the `GPT-OSS` environment. Pass the served name above as `--model`
+to `scripts/select_entities.py`; retrieval and DPO-data construction use the
+separate `openai/gpt-oss-120b` teacher server.
 
 The Hugging Face repository name contains `1600`, but the root weights were
 replaced with checkpoint `2000`.
@@ -122,9 +125,10 @@ The official HIPE scorer was used from:
 ../HIPE-scorer/clef_evaluation.py
 ```
 
-The local exploratory code also uses `hipe_commons.helpers.tsv`, which comes
-from the local HIPE tooling under the notebook workspace. It is not packaged in
-this repository.
+`nel_mdpo` imports `hipe_commons.helpers.tsv` for every HIPE TSV read/write
+(alias building, selection output, DPO-data construction). It comes from the
+local HIPE tooling under the notebook workspace, is not packaged in this
+repository, and must be on `PYTHONPATH`.
 
 ## Retrieval Artifacts
 
@@ -151,7 +155,10 @@ newseye: de, fi, fr, sv
 ## Training
 
 The refactored training CLI trains LoRA/PEFT checkpoints. It does not directly
-write the final MXFP4 merged model folder.
+write the final MXFP4 merged model folder. The released model used
+`--objective multidpo` (`prompt`/`chosen`/`rejected` rows); the CLI default is
+`mdpo`, which needs rows converted with
+`nel_mdpo.dpo_data.convert_jsonl_to_mdpo`.
 
 Example training command shape:
 
@@ -169,6 +176,9 @@ python -m nel_mdpo.train_mdpo \
   --gradient-accumulation-steps 8 \
   --learning-rate 5e-6
 ```
+
+Other defaults: 3 epochs, beta 0.1, seed 42, LoRA r=16, evaluation and
+checkpoints every 200 steps (best by `eval_loss`).
 
 The released checkpoint-2000 MXFP4 folder was exported from:
 
@@ -259,3 +269,8 @@ the scorer outputs.
   may require using the committed retrieval JSONL files rather than live
   retrieval.
 - Large model weights are hosted on Hugging Face, not committed to GitHub.
+- The export notebooks (`convert_model_to_mpfx4.ipynb`,
+  `Finetuning-DPO-MultiNeg-Copy5.ipynb`) are not in this repository; the export
+  snippet above is the equivalent code.
+- `results/*/MANIFEST.json` records a machine-specific `local_model_source`
+  path from the original workstation; it is provenance only.

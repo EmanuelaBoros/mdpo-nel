@@ -11,7 +11,6 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--output-dir", default="runs/retrieval")
     p.add_argument("--dataset-name", default="hipe2020")
     p.add_argument("--language", default="fr")
-    p.add_argument("--split", default="test")
     p.add_argument("--model", default="openai/gpt-oss-120b")
     p.add_argument("--base-url", default="http://0.0.0.0:8007/v1")
     p.add_argument("--max-candidates", type=int, default=8)

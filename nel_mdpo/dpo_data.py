@@ -91,7 +91,11 @@ async def build_dpo_data_from_hipe_tsv(
             names = await suggest_candidate_names(agent, item["mention"], item["context"])
             qids_nested = await asyncio.gather(*(wd.search_multilang(session, n) for n in names[:max_candidates]))
         qids = list(dict.fromkeys(q for group in qids_nested for q in group))
-        candidates = [{"id": qid, "label": qid, "desc": qid} for qid in qids]
+        info = await asyncio.gather(*(wd.get_label_description(session, qid, language) for qid in qids))
+        candidates = [
+            {"id": qid, "label": i["label"] or qid, "desc": i["desc"] or i["label"] or qid}
+            for qid, i in zip(qids, info)
+        ]
         return build_multineg_records(
             item["mention"],
             item["context"],
